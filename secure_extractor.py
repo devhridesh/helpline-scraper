@@ -63,7 +63,8 @@ def verify_official_url_with_ai(company_name, links_list):
         return None
     try:
         print("[2. AI VERIFIER] Asking Gemini to identify the official domain...")
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # v1beta ko badalkar v1 stable endpoint kiya hai
+        api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
         system_instruction = (
             f"Analyze this list of URLs found for '{company_name}'. "
@@ -85,7 +86,6 @@ def verify_official_url_with_ai(company_name, links_list):
             print(f" -> AI Verified Official URL: {verified_url}")
             return verified_url if verified_url else None
         else:
-            # 🚨 LIVE ERROR DEBUGGER ADDED
             print(f" ❌ AI API ERROR (Verifier): Status Code {response.status_code} | Response: {response.text}")
             
     except Exception as e:
@@ -148,7 +148,8 @@ def parse_data_with_gemini(raw_text):
     """Raw text ko Gemini API ke paas bhej kar strict JSON matrix nikaalta hai."""
     try:
         print("[5. AI PARSER] Invoking Gemini API for schema mapping...")
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # v1beta ko badalkar v1 stable endpoint kiya hai
+        api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
         system_instruction = (
             "You are an expert data extractor. Extract the corporate customer care and escalation matrix details from the text. "
@@ -174,7 +175,6 @@ def parse_data_with_gemini(raw_text):
                 
             return json.loads(ai_text)
         else:
-            # 🚨 LIVE ERROR DEBUGGER ADDED
             print(f" ❌ AI API ERROR (Parser): Status Code {response.status_code} | Response: {response.text}")
             
     except Exception as e:
