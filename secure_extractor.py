@@ -17,6 +17,15 @@ if not GEMINI_API_KEY:
     print("❌ SYSTEM ERROR: GEMINI_API_KEY not found in Environment Secrets!")
     sys.exit(1)
 
+# 🛡️ EXTRA SECURITY: High-Security Banks Ka Pre-Verified Data (Whitelist)
+TRUSTED_BANK_DOMAINS = {
+    "state bank of india": "https://bank.sbi",
+    "sbi": "https://bank.sbi",
+    "hdfc bank": "https://www.hdfcbank.com",
+    "icici bank": "https://www.icicibank.com",
+    "axis bank": "https://www.axisbank.com"
+}
+
 
 def run_web_search(query):
     """DuckDuckGo se top 5 search results ke target URLs ki clean list extract karta hai."""
@@ -63,7 +72,6 @@ def verify_official_url_with_ai(company_name, links_list):
         return None
     try:
         print("[2. AI VERIFIER] Asking Gemini to identify the official domain...")
-        # 🆕 Model upgraded to gemini-2.0-flash
         api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         
         system_instruction = (
@@ -148,7 +156,6 @@ def parse_data_with_gemini(raw_text):
     """Raw text ko Gemini 2.0 API ke paas bhej kar strict JSON matrix nikaalta hai."""
     try:
         print("[5. AI PARSER] Invoking Gemini API for schema mapping...")
-        # 🆕 Model upgraded to gemini-2.0-flash
         api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         
         system_instruction = (
@@ -219,14 +226,21 @@ if __name__ == "__main__":
     print("\n--- STARTING LIVE DATA SCRAPING PROCESS ---")
     
     target_company = "State Bank of India"
-    search_query = f"{target_company} official website homepage"
+    company_key = target_company.lower().strip()
     
-    # 1. Top 5 links nikaalein
-    all_links = run_web_search(search_query)
+    official_url = None
+
+    # 🚨 HYBRID LAYER: Pehle pre-verified whitelist check karein
+    if company_key in TRUSTED_BANK_DOMAINS:
+        print(f"[🛡️ SECURITY BYPASS] '{target_company}' is pre-verified in whitelist.")
+        official_url = TRUSTED_BANK_DOMAINS[company_key]
+    else:
+        # Fallback: Agar list mein nahi hai toh automatic search + AI verify chalega
+        search_query = f"{target_company} official website homepage"
+        all_links = run_web_search(search_query)
+        official_url = verify_official_url_with_ai(target_company, all_links)
     
-    # 2. AI se official domain verify karayein (Fake/Scammer sites filter karne ke liye)
-    official_url = verify_official_url_with_ai(target_company, all_links)
-    
+    # Execution Flow
     if official_url:
         # 3. Official site ke andar Contact/Support page dhoondhein
         support_url = find_support_page(official_url)
