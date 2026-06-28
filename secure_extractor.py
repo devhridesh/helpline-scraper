@@ -10,7 +10,7 @@ print("--- AI-POWERED SCRAMBLER INITIALIZED ---")
 SUPABASE_URL = "https://irqzochxonpasmxsvewa.supabase.co"
 SUPABASE_KEY = "sb_publishable_iompK6J4ZsaK7qOCYuw10w_hP4xSb2z"
 
-# GitHub Secrets se secure tarike se chabi read karna (Global Variable)
+# GitHub Secrets se secure tarike se chabi read karna
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
 
 if not GEMINI_API_KEY:
@@ -58,7 +58,7 @@ def run_web_search(query):
 
 
 def verify_official_url_with_ai(company_name, links_list):
-    """Gemini se poochta hai ki list mein se asli official corporate domain ya strong authority kaun si hai."""
+    """Gemini se poochta hai ki list mein se asli official corporate domain ya valid authority subdomain kaun si hai."""
     if not links_list:
         return None
     try:
@@ -67,9 +67,9 @@ def verify_official_url_with_ai(company_name, links_list):
         
         system_instruction = (
             f"Analyze this list of URLs found for '{company_name}'. "
-            f"Identify the single official corporate website or a strong trusted authority (like Wikipedia or Govt portal). "
-            f"Return ONLY the plain URL string. Do not include markdown, backticks, or explanations. "
-            f"If no official or highly trusted site is found, return an empty string."
+            f"Identify the best official corporate website or its trusted subdomain/authority. "
+            f"Return ONLY the plain URL string from the list. Do not include markdown, backticks, or explanations. "
+            f"If absolutely no relevant official site is found, return an empty string."
         )
         
         payload = {
@@ -209,8 +209,8 @@ def sync_with_supabase(company_name, ai_data, source_url):
 if __name__ == "__main__":
     print("\n--- STARTING LIVE DATA SCRAPING PROCESS ---")
     
-    target_company = "State Bank of India (SBI)"
-    search_query = f"{target_company} corporate official website contact info"
+    target_company = "State Bank of India"
+    search_query = f"{target_company} official website homepage"
     
     # 1. Top 5 links nikaalein
     all_links = run_web_search(search_query)
