@@ -58,13 +58,13 @@ def run_web_search(query):
 
 
 def verify_official_url_with_ai(company_name, links_list):
-    """Gemini se poochta hai ki list mein se asli official corporate domain ya valid authority subdomain kaun si hai."""
+    """Gemini 2.0 se poochta hai ki list mein se asli official corporate domain kaun si hai."""
     if not links_list:
         return None
     try:
         print("[2. AI VERIFIER] Asking Gemini to identify the official domain...")
-        # v1beta ko badalkar v1 stable endpoint kiya hai
-        api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # 🆕 Model upgraded to gemini-2.0-flash
+        api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         
         system_instruction = (
             f"Analyze this list of URLs found for '{company_name}'. "
@@ -145,11 +145,11 @@ def extract_page_text(url):
 
 
 def parse_data_with_gemini(raw_text):
-    """Raw text ko Gemini API ke paas bhej kar strict JSON matrix nikaalta hai."""
+    """Raw text ko Gemini 2.0 API ke paas bhej kar strict JSON matrix nikaalta hai."""
     try:
         print("[5. AI PARSER] Invoking Gemini API for schema mapping...")
-        # v1beta ko badalkar v1 stable endpoint kiya hai
-        api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # 🆕 Model upgraded to gemini-2.0-flash
+        api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         
         system_instruction = (
             "You are an expert data extractor. Extract the corporate customer care and escalation matrix details from the text. "
