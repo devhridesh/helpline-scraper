@@ -1,15 +1,23 @@
+import os
 import sys
+import json
 import requests
 from bs4 import BeautifulSoup
 
-print("--- SCRAMBLER BOOT INITIALIZED ---")
+print("--- AI-POWERED SCRAMBLER INITIALIZED ---")
 
-# --- Environment Credentials Config ---
-# Google Keys ki ab koi zaroorat nahi hai! Sirf Supabase config bacha hai.
+# --- Environment Configuration ---
 SUPABASE_URL = "https://irqzochxonpasmxsvewa.supabase.co"
 SUPABASE_KEY = "sb_publishable_iompK6J4ZsaK7qOCYuw10w_hP4xSb2z"
 
-print("--- CREDENTIALS LOADED SUCCESSFULLY ---")
+# GitHub Secrets se secure tarike se chabi read karna (Global Variable)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
+
+if not GEMINI_API_KEY:
+    print("❌ SYSTEM ERROR: GEMINI_API_KEY not found in Environment Secrets!")
+    sys.exit(1)
+
+
 def run_web_search(query):
     """DuckDuckGo se top 5 search results ke target URLs ki clean list extract karta hai."""
     try:
@@ -48,10 +56,6 @@ def run_web_search(query):
         print(f"\n❌ [1. WEB SEARCH] Unexpected System Error: {str(e)}")
         return []
 
-
-# =====================================================================
-# 🆕 NAYE FUNCTIONS: YAHAN SE COPY-PASTE SHURU KAREIN
-# =====================================================================
 
 def verify_official_url_with_ai(company_name, links_list):
     """Gemini se poochta hai ki list mein se asli official corporate domain ya strong authority kaun si hai."""
@@ -117,14 +121,10 @@ def find_support_page(official_url):
     return official_url
 
 
-# =====================================================================
-# ⬇️ PURANA FUNCTION: ISKE NEECHE YEH PEHLE SE MAUJOOD HAI
-# =====================================================================
-
 def extract_page_text(url):
     """Target URL par jaakar uska raw content/text download karta hai."""
     try:
-        print(f"[4. WEB SCRAPER] Fetching raw content from website...")
+        print(f"[4. WEB SCRAPER] Fetching raw content from website: {url}")
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         response = requests.get(url, headers=headers, timeout=15)
         
@@ -139,36 +139,71 @@ def extract_page_text(url):
     return None
 
 
-def sync_with_supabase(data):
-    """Extracted records ko Supabase corporate_helplines table mein push karta hai."""
-    if not data:
-        print("[SUPABASE SYNC] No data available to sync.")
+def parse_data_with_gemini(raw_text):
+    """Raw text ko Gemini API ke paas bhej kar strict JSON matrix nikaalta hai."""
+    try:
+        print("[5. AI PARSER] Invoking Gemini API for schema mapping...")
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        
+        system_instruction = (
+            "You are an expert data extractor. Extract the corporate customer care and escalation matrix details from the text. "
+            "Return a strictly clean JSON object matching these exact keys with string values (use empty strings if not found):\n"
+            "level_1_phone, level_1_email, level_2_name, level_2_phone, level_2_email.\n"
+            "Do not include any markdown formatting or backticks, just raw JSON."
+        )
+        
+        payload = {
+            "contents": [{"parts": [{"text": f"{system_instruction}\n\nRaw Text:\n{raw_text}"}]}]
+        }
+        
+        response = requests.post(api_url, json=payload, headers={"Content-Type": "application/json"}, timeout=20)
+        
+        if response.status_code == 200:
+            raw_response = response.json()
+            ai_text = raw_response['candidates'][0]['content']['parts'][0]['text'].strip()
+            
+            if ai_text.startswith("```json"):
+                ai_text = ai_text.replace("```json", "").replace("```", "").strip()
+            elif ai_text.startswith("```"):
+                ai_text = ai_text.replace("```", "").strip()
+                
+            return json.loads(ai_text)
+    except Exception as e:
+        print(f" ❌ AI Processing Error: {str(e)}")
+    return None
+
+
+def sync_with_supabase(company_name, ai_data, source_url):
+    """AI processed matrix ko Supabase corporate_helplines table mein push karta hai."""
+    if not ai_data:
         return
         
-    print("\n[SUPABASE SYNC] Initializing database sync batch...")
+    print("[6. SUPABASE SYNC] Syncing structured escalation matrix to database...")
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal"
+        "Content-Type": "application/json"
     }
     endpoint = f"{SUPABASE_URL}/rest/v1/corporate_helplines" 
     
-    for record in data:
-        payload = {
-            "name": record["title"],
-            "source_url": record["link"],
-            "description": record["snippet"]
-        }
-        try:
-            response = requests.post(endpoint, json=payload, headers=headers)
-            if response.status_code in [200, 201]:
-                print(f" ✅ Success: Synced '{record['title']}' to database!")
-            else:
-                print(f" ⚠️ Database Warning: Status {response.status_code}")
-                print(f"   Response Body: {response.text}")
-        except Exception as e:
-            print(f" ❌ Failed syncing entry to Supabase: {str(e)}")
+    payload = {
+        "company_name": company_name,
+        "level_1_phone": ai_data.get("level_1_phone", ""),
+        "level_1_email": ai_data.get("level_1_email", ""),
+        "level_2_name": ai_data.get("level_2_name", ""),
+        "level_2_phone": ai_data.get("level_2_phone", ""),
+        "level_2_email": ai_data.get("level_2_email", ""),
+        "source_url": source_url
+    }
+    
+    try:
+        response = requests.post(endpoint, json=payload, headers=headers)
+        if response.status_code in [200, 201]:
+            print(f"  ✅ Complete Success: Structured matrix for '{company_name}' synced!")
+        else:
+            print(f"  ⚠️ Sync Issue: Status {response.status_code} | {response.text}")
+    except Exception as e:
+        print(f"  ❌ Database Error: {str(e)}")
 
 
 if __name__ == "__main__":
