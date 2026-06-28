@@ -2,9 +2,8 @@ name: Automatic Helpline Scraper Cron
 
 on:
   schedule:
-    # Yeh har 4 ghante mein ek baar background mein script ko automatic trigger karega
     - cron: '0 */4 * * *' 
-  workflow_dispatch: # Isse aap GitHub portal se "Run manual" par click karke bhi test kar sakte hain
+  workflow_dispatch: 
 
 jobs:
   scrape-and-sync:
@@ -25,4 +24,6 @@ jobs:
         pip install requests beautifulsoup4
 
     - name: Run Secure Extractor Script
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       run: python secure_extractor.py
