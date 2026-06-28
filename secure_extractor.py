@@ -77,14 +77,19 @@ def verify_official_url_with_ai(company_name, links_list):
         }
         
         response = requests.post(api_url, json=payload, headers={"Content-Type": "application/json"}, timeout=20)
+        
         if response.status_code == 200:
             verified_url = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
             if verified_url.startswith("```"):
                 verified_url = verified_url.replace("```", "").strip()
             print(f" -> AI Verified Official URL: {verified_url}")
             return verified_url if verified_url else None
+        else:
+            # 🚨 LIVE ERROR DEBUGGER ADDED
+            print(f" ❌ AI API ERROR (Verifier): Status Code {response.status_code} | Response: {response.text}")
+            
     except Exception as e:
-        print(f" ❌ AI Verification Error: {str(e)}")
+        print(f" ❌ AI Verification Exception: {str(e)}")
     return None
 
 
@@ -168,6 +173,10 @@ def parse_data_with_gemini(raw_text):
                 ai_text = ai_text.replace("```", "").strip()
                 
             return json.loads(ai_text)
+        else:
+            # 🚨 LIVE ERROR DEBUGGER ADDED
+            print(f" ❌ AI API ERROR (Parser): Status Code {response.status_code} | Response: {response.text}")
+            
     except Exception as e:
         print(f" ❌ AI Processing Error: {str(e)}")
     return None
