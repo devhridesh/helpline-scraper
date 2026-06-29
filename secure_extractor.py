@@ -99,7 +99,6 @@ def map_data_with_gemini(raw_text: str, verified_emails: list) -> dict:
         }
     
 
-    
  # Absolute Data Grounding Boundaries
     system_instruction = (
         "You are a strict data classification bot. Your single job is to map verified contact details to corporate hierarchy.\n"
@@ -114,13 +113,17 @@ def map_data_with_gemini(raw_text: str, verified_emails: list) -> dict:
         "}"
     )
 
-
-
     # Deploying latest production model variant optimized for structured text parsing
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    model = genai.GenerativeModel('gemini-2.0-flash', system_instruction=system_instruction)
     
- 
     prompt = f"Raw Source Context Document Block:\n{raw_text}"
+    
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"}
+        )
+        
         # Output isolation buffer mapping
         clean_json_output = response.text.strip()
         parsed_schema = json.loads(clean_json_output)
