@@ -2,8 +2,8 @@ name: Run Corporate Helpline Scraper
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Har 4 ghante mein chalne ke liye
-  workflow_dispatch: # Taaki aap manually bhi button dabaakar jab chahein run kar sakein
+    - cron: '0 */4 * * *' # Har 4 ghante mein automatic chalne ke liye
+  workflow_dispatch: # Taaki aap GitHub UI par manually button dabaakar bhi run kar sakein
 
 jobs:
   scrape_and_sync:
@@ -21,7 +21,7 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install google-generativeai supabase
+        python -m pip install google-generativeai supabase
 
     - name: Execute Extractor Script with Hidden Secrets
       env:
