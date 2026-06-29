@@ -2,8 +2,8 @@ name: Run Corporate Helpline Scraper
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Har 4 ghante mein automatic chalne ke liye
-  workflow_dispatch: # Taaki aap GitHub UI par manually button dabaakar bhi run kar sakein
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
 
 jobs:
   scrape_and_sync:
