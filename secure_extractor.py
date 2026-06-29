@@ -1,261 +1,127 @@
+import re
 import os
-import sys
-import json
-import requests
-from bs4 import BeautifulSoup
+from datetime import datetime
+import google.generativeai as genai
+from supabase import create_client, Client
 
-print("--- AI-POWERED SCRAMBLER INITIALIZED ---")
+# 1. API Keys aur Clients ka Setup
+GOOGLE_API_KEY = os.environ.get("GEMINI_API_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") # Unique operations ke liye service role best hai
 
-# --- Environment Configuration ---
-SUPABASE_URL = "https://irqzochxonpasmxsvewa.supabase.co"
-SUPABASE_KEY = "sb_publishable_iompK6J4ZsaK7qOCYuw10w_hP4xSb2z"
+genai.configure(api_key=GOOGLE_API_KEY)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# GitHub Secrets se secure tarike se chabi read karna
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
-
-if not GEMINI_API_KEY:
-    print("❌ SYSTEM ERROR: GEMINI_API_KEY not found in Environment Secrets!")
-    sys.exit(1)
-
-# 🛡️ EXTRA SECURITY: High-Security Banks Ka Pre-Verified Data (Whitelist)
-TRUSTED_BANK_DOMAINS = {
-    "state bank of india": "https://bank.sbi",
-    "sbi": "https://bank.sbi",
-    "hdfc bank": "https://www.hdfcbank.com",
-    "icici bank": "https://www.icicibank.com",
-    "axis bank": "https://www.axisbank.com"
-}
+# 2. STEP 1: Pure Regex Email Extractor
+def extract_emails_with_regex(raw_text: str) -> list:
+    """Webpage ke raw text se strictly saare valid emails nikaalta hai bina kisi AI hallucination ke."""
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    all_emails = re.findall(email_pattern, raw_text)
+    # Duplicate hatane ke liye set banakar vapas list mein convert kiya
+    unique_emails = list(set(all_emails))
+    print(f"🔍 [Regex Found Emails]: {unique_emails}")
+    return unique_emails
 
 
-def run_web_search(query):
-    """DuckDuckGo se top 5 search results ke target URLs ki clean list extract karta hai."""
-    try:
-        print(f"\n[1. WEB SEARCH] Executing Search Query: '{query}'...")
-        url = "https://html.duckduckgo.com/html/"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        
-        response = requests.post(url, data={"q": query}, headers=headers, timeout=15)
-        
-        if response.status_code != 200:
-            print(f"[1. WEB SEARCH] Error: Unable to fetch results (Status Code: {response.status_code})")
-            return []
-            
-        soup = BeautifulSoup(response.text, "html.parser")
-        results = soup.find_all("div", class_="result")
-        
-        extracted_links = []
-        for item in results[:5]:
-            title_tag = item.find("a", class_="result__url")
-            if title_tag:
-                link = title_tag.get("href")
-                if link:
-                    if link.startswith("//"):
-                        link = "https:" + link
-                    print(f" -> Found Potential Link: {link}")
-                    extracted_links.append(link)
-                    
-        if not extracted_links:
-            print("[1. WEB SEARCH] Warning: No links extracted. HTML layout might have changed.")
-            
-        return extracted_links
-
-    except Exception as e:
-        print(f"\n❌ [1. WEB SEARCH] Unexpected System Error: {str(e)}")
-        return []
-
-
-def verify_official_url_with_ai(company_name, links_list):
-    """Gemini 2.0 se poochta hai ki list mein se asli official corporate domain kaun si hai."""
-    if not links_list:
-        return None
-    try:
-        print("[2. AI VERIFIER] Asking Gemini to identify the official domain...")
-        api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-        
-        system_instruction = (
-            f"Analyze this list of URLs found for '{company_name}'. "
-            f"Identify the best official corporate website or its trusted subdomain/authority. "
-            f"Return ONLY the plain URL string from the list. Do not include markdown, backticks, or explanations. "
-            f"If absolutely no relevant official site is found, return an empty string."
-        )
-        
-        payload = {
-            "contents": [{"parts": [{"text": f"{system_instruction}\n\nLinks List:\n{links_list}"}]}]
-        }
-        
-        response = requests.post(api_url, json=payload, headers={"Content-Type": "application/json"}, timeout=20)
-        
-        if response.status_code == 200:
-            verified_url = response.json()['candidates'][0]['content']['parts'][0]['text'].strip()
-            if verified_url.startswith("```"):
-                verified_url = verified_url.replace("```", "").strip()
-            print(f" -> AI Verified Official URL: {verified_url}")
-            return verified_url if verified_url else None
-        else:
-            print(f" ❌ AI API ERROR (Verifier): Status Code {response.status_code} | Response: {response.text}")
-            
-    except Exception as e:
-        print(f" ❌ AI Verification Exception: {str(e)}")
-    return None
-
-
-def find_support_page(official_url):
-    """Official Homepage ke saare links khangal kar Contact/Support page ka deep link nikaalta hai."""
-    if not official_url:
-        return None
-    try:
-        print(f"[3. DEEP CRAWLER] Scanning homepage for support/contact links: {official_url}")
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        response = requests.get(official_url, headers=headers, timeout=15)
-        
-        if response.status_code != 200:
-            return official_url
-            
-        soup = BeautifulSoup(response.text, "html.parser")
-        keywords = ["contact", "support", "helpline", "customer-care", "escalation", "grievance"]
-        
-        for a_tag in soup.find_all("a", href=True):
-            href = a_tag["href"].lower()
-            text = a_tag.get_text().lower()
-            
-            if any(k in href or k in text for k in keywords):
-                target_href = a_tag["href"]
-                if target_href.startswith("/"):
-                    target_href = official_url.rstrip("/") + target_href
-                elif not target_href.startswith("http"):
-                    target_href = official_url.rstrip("/") + "/" + target_href
-                print(f" -> Deep Support Link Located: {target_href}")
-                return target_href
-    except Exception as e:
-        print(f" ⚠️ Crawler Warning: Could not parse deep links ({str(e)})")
-        
-    return official_url
-
-
-def extract_page_text(url):
-    """Target URL par jaakar uska raw content/text download karta hai."""
-    try:
-        print(f"[4. WEB SCRAPER] Fetching raw content from website: {url}")
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        response = requests.get(url, headers=headers, timeout=15)
-        
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, "html.parser")
-            for script in soup(["script", "style"]):
-                script.decompose()
-            text = soup.get_text(separator=" ", strip=True)
-            return text[:6000]
-    except Exception as e:
-        print(f" ⚠️ Scraping Warning: Page load failed ({str(e)})")
-    return None
-
-
-def parse_data_with_gemini(raw_text):
-    """Raw text ko Gemini 2.0 API ke paas bhej kar strict JSON matrix nikaalta hai."""
-    try:
-        print("[5. AI PARSER] Invoking Gemini API for schema mapping...")
-        api_url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-        
-        system_instruction = (
-            "You are an expert data extractor. Extract the corporate customer care and escalation matrix details from the text. "
-            "Return a strictly clean JSON object matching these exact keys with string values (use empty strings if not found):\n"
-            "level_1_phone, level_1_email, level_2_name, level_2_phone, level_2_email.\n"
-            "Do not include any markdown formatting or backticks, just raw JSON."
-        )
-        
-        payload = {
-            "contents": [{"parts": [{"text": f"{system_instruction}\n\nRaw Text:\n{raw_text}"}]}]
-        }
-        
-        response = requests.post(api_url, json=payload, headers={"Content-Type": "application/json"}, timeout=20)
-        
-        if response.status_code == 200:
-            raw_response = response.json()
-            ai_text = raw_response['candidates'][0]['content']['parts'][0]['text'].strip()
-            
-            if ai_text.startswith("```json"):
-                ai_text = ai_text.replace("```json", "").replace("```", "").strip()
-            elif ai_text.startswith("```"):
-                ai_text = ai_text.replace("```", "").strip()
-                
-            return json.loads(ai_text)
-        else:
-            print(f" ❌ AI API ERROR (Parser): Status Code {response.status_code} | Response: {response.text}")
-            
-    except Exception as e:
-        print(f" ❌ AI Processing Error: {str(e)}")
-    return None
-
-
-def sync_with_supabase(company_name, ai_data, source_url):
-    """AI processed matrix ko Supabase corporate_helplines table mein push karta hai."""
-    if not ai_data:
-        return
-        
-    print("[6. SUPABASE SYNC] Syncing structured escalation matrix to database...")
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json"
-    }
-    endpoint = f"{SUPABASE_URL}/rest/v1/corporate_helplines" 
+# 3. STEP 2: Strict Gemini Mapper
+def map_data_with_gemini(raw_text: str, verified_emails: list) -> dict:
+    """Regex se nikle huye emails ko hierarchy ke hisab se structure karta hai."""
     
+    # Agar text mein kuch nahi mila toh faltu API call bachaane ke liye khali schema return karo
+    if not verified_emails:
+        return {
+            "level_1_phone": "", "level_1_email": "",
+            "level_2_name": "", "level_2_phone": "", "level_2_email": "",
+            "level_3_name": "", "level_3_phone": "", "level_3_email": ""
+        }
+
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    
+    # Absolute Strict Grounding Prompt Instruction
+    system_instruction = (
+        "You are a strict data classification bot. Your single job is to map verified contact details to corporate hierarchy.\n"
+        f"STRICT RULE 1: For any email field, you can ONLY use emails present in this whitelist: {verified_emails}.\n"
+        "STRICT RULE 2: DO NOT use your internal training knowledge or guess any data. If an email from the whitelist does not explicitly match a level in the text, leave that field empty (\"\").\n"
+        "STRICT RULE 3: Extract human names and phone numbers only if explicitly linked to that escalation level in the text.\n\n"
+        "Return a raw, clean JSON object matching these exact keys with string values. No markdown blocks, no backticks:\n"
+        "{\n"
+        "  \"level_1_phone\": \"\", \"level_1_email\": \"\",\n"
+        "  \"level_2_name\": \"\", \"level_2_phone\": \"\", \"level_2_email\": \"\",\n"
+        "  \"level_3_name\": \"\", \"level_3_phone\": \"\", \"level_3_email\": \"\"\n"
+        "}"
+    )
+
+    prompt = f"Raw Text:\n{raw_text}"
+    
+    try:
+        response = model.generate_content(
+            prompt,
+            generation_config={"response_mime_type": "application/json"},
+            system_instruction=system_instruction
+        )
+        # JSON response ko parse karke python dict mein badla
+        import json
+        return json.loads(response.text.strip())
+    except Exception as e:
+        print(f"❌ Gemini Parsing Error: {e}")
+        return {}
+
+
+# 4. STEP 3: Automated Pipeline Trigger with Supabase UPSERT
+def process_and_sync_corporate_data(company_name: str, domain: str, webpage_raw_text: str, gov_verified: bool = False):
+    """Poore system ko automate karke database mein data sync (UPSERT) karta hai."""
+    print(f"🚀 Processing Data for: {company_name} ({domain})...")
+    
+    # 1. Regex Se Clean Emails Nikalo
+    clean_emails = extract_emails_with_regex(webpage_raw_text)
+    
+    # 2. Gemini Se Hierarchy Setup Karvao
+    structured_data = map_data_with_gemini(webpage_raw_text, clean_emails)
+    
+    if not structured_data:
+        print("⚠️ Mapping fail ho gayi. Operation aborted.")
+        return
+
+    # 3. Live Autopilot Timestamp Generate Karo
+    current_timestamp = datetime.now().strftime("%d-%b-%Y") # Format: 29-Jun-2026
+    
+    # 4. Database Payload Taiyar Karo
     payload = {
         "company_name": company_name,
-        "level_1_phone": ai_data.get("level_1_phone", ""),
-        "level_1_email": ai_data.get("level_1_email", ""),
-        "level_2_name": ai_data.get("level_2_name", ""),
-        "level_2_phone": ai_data.get("level_2_phone", ""),
-        "level_2_email": ai_data.get("level_2_email", ""),
-        "source_url": source_url
+        "domain": domain, # Yeh unique key hai, isi par upsert kaam karega
+        "level_1_phone": structured_data.get("level_1_phone", ""),
+        "level_1_email": structured_data.get("level_1_email", ""),
+        "level_2_name": structured_data.get("level_2_name", ""),
+        "level_2_phone": structured_data.get("level_2_phone", ""),
+        "level_2_email": structured_data.get("level_2_email", ""),
+        "level_3_name": structured_data.get("level_3_name", ""),
+        "level_3_phone": structured_data.get("level_3_phone", ""),
+        "level_3_email": structured_data.get("level_3_email", ""),
+        "gov_verified": gov_verified,
+        "last_verified_at": current_timestamp
     }
     
+    # 5. Supabase UPSERT Query execution
     try:
-        response = requests.post(endpoint, json=payload, headers=headers)
-        if response.status_code in [200, 201]:
-            print(f"  ✅ Complete Success: Structured matrix for '{company_name}' synced!")
-        else:
-            print(f"  ⚠️ Sync Issue: Status {response.status_code} | {response.text}")
+        # on_conflict='domain' ka matlab hai agar domain pehle se hai toh auto-overwrite (Update) kar do!
+        result = supabase.table("corporate_helplines").upsert(payload, on_conflict="domain").execute()
+        print(f"✅ Successfully synced {company_name} to database! [Status: Overwritten/Inserted]")
     except Exception as e:
-        print(f"  ❌ Database Error: {str(e)}")
+        print(f"❌ Supabase Upsert Operation Failed: {e}")
 
-
+# Example Integration Test Check:
 if __name__ == "__main__":
-    print("\n--- STARTING LIVE DATA SCRAPING PROCESS ---")
+    # Dummy mock text testing ke liye (Airtel/Paytm ka sample dummy layout)
+    sample_scraped_text = (
+        "Welcome to Airtel India Compliance Section. For general support contact customer.care@airtel.in or call 1800112211. "
+        "Our Nodal Officer for appellate authority is Mr. Rajesh Kumar. If you want to escalate your issue to level 2, "
+        "please write to our core appellate team at appellate.officer@airtel.in or dial direct desk 011-23456789."
+    )
     
-    target_company = "State Bank of India"
-    company_key = target_company.lower().strip()
-    
-    official_url = None
-
-    # 🚨 HYBRID LAYER: Pehle pre-verified whitelist check karein
-    if company_key in TRUSTED_BANK_DOMAINS:
-        print(f"[🛡️ SECURITY BYPASS] '{target_company}' is pre-verified in whitelist.")
-        official_url = TRUSTED_BANK_DOMAINS[company_key]
-    else:
-        # Fallback: Agar list mein nahi hai toh automatic search + AI verify chalega
-        search_query = f"{target_company} official website homepage"
-        all_links = run_web_search(search_query)
-        official_url = verify_official_url_with_ai(target_company, all_links)
-    
-    # Execution Flow
-    if official_url:
-        # 3. Official site ke andar Contact/Support page dhoondhein
-        support_url = find_support_page(official_url)
-        
-        # 4. Us deep support page ka raw content uthayein
-        page_content = extract_page_text(support_url)
-        
-        if page_content:
-            # 5. Gemini se strict JSON matrix parse karayein
-            structured_json = parse_data_with_gemini(page_content)
-            
-            if structured_json:
-                # 6. Supabase database mein sync karein
-                sync_with_supabase(target_company, structured_json, support_url)
-    else:
-        print("❌ SECURITY BLOCK: No official website or trusted authority verified by AI. Skipping sync.")
-        
-    print("\n--- PROCESS COMPLETED SUCCESSFULLY ---")
+    # Triggering the workflow
+    process_and_sync_corporate_data(
+        company_name="Airtel India",
+        domain="airtel.in",
+        webpage_raw_text=sample_scraped_text,
+        gov_verified=False # Jab tak Gov data match na ho, tab tak false rakhein
+    )
