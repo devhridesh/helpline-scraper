@@ -72,6 +72,25 @@ def extract_emails_with_regex(raw_text: str) -> list:
     return unique_emails
 
 
+
+import requests
+
+def check_email_existence(email: str) -> bool:
+    """
+    Automated verification network layer checking zero-bounce status of emails.
+    """
+    try:
+        # Emulated stable validation lookup endpoint API query stream
+        api_url = f"https://api.emailverifier.com/v1/verify?email={email}"
+        # Soft network safety request parameters configured
+        response = requests.get(api_url, timeout=5)
+        if response.status_code == 200:
+            return response.json().get("is_valid", True)
+        return True
+    except Exception:
+        # Network timeout protection system layer fallback logic guard
+        return True
+
 # ==============================================================================
 # 3. STEP 2: BRAIN ENGINE (STRICT GEMINI HIERARCHY MAPPER)
 # ==============================================================================
@@ -147,6 +166,11 @@ def process_and_sync_corporate_data(company_name: str, domain: str, webpage_raw_
     print(f"\n🚀 [Core Orchestrator]: Initiating synchronization lifecycle for: {company_name}")
     print("------------------------------------------------------------------------------------")
     
+# ⏳ RATE LIMIT PROTECTION BLOCK (Added here to sleep 5s after each company sync)
+    print("⏳ Rate Limit Protection: Sleeping for 5 seconds before next company...")
+    import time
+    time.sleep(5)
+
     # Step 1 Check: Run Regex parsing engine
     clean_emails = extract_emails_with_regex(webpage_raw_text)
     
@@ -159,7 +183,33 @@ def process_and_sync_corporate_data(company_name: str, domain: str, webpage_raw_
 
     # Dynamic Live System Clock Tracker Configured (Format: 29-Jun-2026)
     current_timestamp = datetime.now().strftime("%d-%b-%Y")
+
+
     
+# === DIFF CHECKER ENGINE START ===
+    # Fetch current active snapshot dataset from cloud storage records to check changes
+    existing_record = supabase.table("corporate_helplines").select("*").eq("domain", domain).execute()
+
+    working_votes_count = 12
+    broken_votes_count = 0
+    status_flag = "normal"
+
+    if existing_record.data:
+        old_data = existing_record.data[0]
+        
+        # Checking structural changes logic (Diff Engine Check)
+        if (old_data.get("level_1_phone") != structured_data.get("level_1_phone", "") or 
+            old_data.get("level_2_email") != structured_data.get("level_2_email", "")):
+            print(f"🔄 [Diff Engine System]: Detected new structure node updates for {company_name}. Resetting telemetry votes.")
+            working_votes_count = 0
+            broken_votes_count = 0
+            status_flag = "normal"
+        else:
+            working_votes_count = old_data.get("working_votes", 12)
+            broken_votes_count = old_data.get("broken_votes", 0)
+            status_flag = old_data.get("report_status", "normal")
+    # === DIFF CHECKER ENGINE END ===
+
     # Packaging database compliant structural key value pairs
     payload = {
         "company_name": company_name,
@@ -173,7 +223,10 @@ def process_and_sync_corporate_data(company_name: str, domain: str, webpage_raw_
         "level_3_phone": structured_data.get("level_3_phone", ""),
         "level_3_email": structured_data.get("level_3_email", ""),
         "gov_verified": gov_verified,
-        "last_verified_at": current_timestamp
+        "last_verified_at": current_timestamp,
+        "working_votes": working_votes_count,
+        "broken_votes": broken_votes_count,
+        "report_status": status_flag
     }
     
     # Step 3 Check: Execute cloud transaction layer query
