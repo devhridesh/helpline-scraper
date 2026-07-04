@@ -45,7 +45,6 @@ def extract_emails_with_regex(raw_text: str) -> list:
     print(f"✅ [Pipeline Phase 1]: Scan complete. Whitelist compiled: {unique_emails}")
     return unique_emails
 
-
 # ==============================================================================
 # 3. STEP 2: BRAIN ENGINE (AUTO-RETRY ON QUOTA LIMITS)
 # ==============================================================================
@@ -59,8 +58,7 @@ def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int 
         print("⚠️ [Pipeline Phase 2 Warning]: Empty credentials array. Bypassing AI analysis.")
         return {}
 
-    model = genai.GenerativeModel('gemini-2.0-flash')
-    
+    # 📝 1. System instruction ko pehle string me define karo
     system_instruction = (
         "You are a strict data classification bot. Your single job is to map verified contact details to corporate hierarchy.\n"
         f"STRICT RULE 1: For any email field, you can ONLY use emails present in this whitelist: {verified_emails}.\n"
@@ -74,15 +72,21 @@ def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int 
         "}"
     )
 
+    # ✅ 2. Model initialization ke time par hi system_instruction pass karo
+    model = genai.GenerativeModel(
+        'gemini-2.0-flash',
+        system_instruction=system_instruction
+    )
+    
     prompt = f"Raw Source Context Document Block:\n{raw_text}"
     
     # 🔄 Auto-Retry Loop Block
     for attempt in range(1, max_retries + 1):
         try:
+            # ✅ 3. generate_content ko ekdum clean rakho (Bina system_instruction argument ke)
             response = model.generate_content(
                 prompt,
-                generation_config={"response_mime_type": "application/json"},
-                system_instruction=system_instruction
+                generation_config={"response_mime_type": "application/json"}
             )
             print("✅ [Pipeline Phase 2 Success]: AI successfully parsed data hierarchy!")
             return json.loads(response.text.strip())
@@ -104,7 +108,6 @@ def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int 
             return {}
             
     return {}
-
 
 # ==============================================================================
 # 4. STEP 3: SMART SYNC ENGINE (DELTA SCRAPING / HASH CHECK OVERRIDE)
