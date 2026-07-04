@@ -2,9 +2,10 @@ name: Automatic Helpline Scraper Cron
 
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    # ⏰ Har 12 ghante me ek baar chalega (Subah 9 baje aur Shaam 9 baje UTC)
+    - cron: '0 9,21 * * *'  
   workflow_dispatch:
-
+    
 jobs:
   scrape_and_sync:
     runs-on: ubuntu-latest
