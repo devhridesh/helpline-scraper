@@ -1,11 +1,12 @@
 import os
 import re
 import json
-import time  # ⏳ Auto-pause aur retry ke liye
-import hashlib  # 🧠 Quota bachane ke liye (Hash Check)
+import time
+import sys  # 🛑 Script ko instantly kill karne ke liye
+import hashlib
 from datetime import datetime
 import google.generativeai as genai
-from google.api_core import exceptions  # ⚠️ Specific Google API Errors pakadne ke liye
+from google.api_core import exceptions
 from supabase import create_client, Client
 
 # ==============================================================================
@@ -45,20 +46,20 @@ def extract_emails_with_regex(raw_text: str) -> list:
     print(f"✅ [Pipeline Phase 1]: Scan complete. Whitelist compiled: {unique_emails}")
     return unique_emails
 
+
 # ==============================================================================
-# 3. STEP 2: BRAIN ENGINE (AUTO-RETRY ON QUOTA LIMITS)
+# 3. STEP 2: BRAIN ENGINE (SMART LIMIT ROUTER)
 # ==============================================================================
-def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int = 3) -> dict:
+def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int = 2) -> dict:
     """
-    Gemini AI se data map karta hai. Agar 429 Quota Error aata hai, toh 
-    yeh automatic pause lekar dubara koshish karta hai.
+    Gemini AI se data map karta hai aur error message ke type (Day vs Minute) 
+    ke hisab se smart decision leta hai.
     """
     print("🧠 [Pipeline Phase 2]: Passing structured tokens to Gemini LLM mapping core...")
     if not verified_emails:
         print("⚠️ [Pipeline Phase 2 Warning]: Empty credentials array. Bypassing AI analysis.")
         return {}
 
-    # 📝 1. System instruction ko pehle string me define karo
     system_instruction = (
         "You are a strict data classification bot. Your single job is to map verified contact details to corporate hierarchy.\n"
         f"STRICT RULE 1: For any email field, you can ONLY use emails present in this whitelist: {verified_emails}.\n"
@@ -72,7 +73,7 @@ def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int 
         "}"
     )
 
-    # ✅ 2. Model initialization ke time par hi system_instruction pass karo
+    # ✅ Model initialization ke time par hi system_instruction pass kiya hai
     model = genai.GenerativeModel(
         'gemini-2.0-flash',
         system_instruction=system_instruction
@@ -80,10 +81,10 @@ def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int 
     
     prompt = f"Raw Source Context Document Block:\n{raw_text}"
     
-    # 🔄 Auto-Retry Loop Block
+    # 🔄 Smart Retry & Routing Loop
     for attempt in range(1, max_retries + 1):
         try:
-            # ✅ 3. generate_content ko ekdum clean rakho (Bina system_instruction argument ke)
+            # ✅ generate_content ko ekdum clean rakha hai
             response = model.generate_content(
                 prompt,
                 generation_config={"response_mime_type": "application/json"}
@@ -92,15 +93,28 @@ def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int 
             return json.loads(response.text.strip())
             
         except exceptions.ResourceExhausted as quota_err:
-            # ⏳ Jab 429 Rate Limit hit hogi, tab yeh chalega
-            print(f"\n⚠️ [QUOTA WARNING]: Gemini Free Limit Exhausted (Attempt {attempt}/{max_retries})")
-            if attempt < max_retries:
-                sleep_duration = 60  # 1 minute ka cooldown window
-                print(f"⏳ [Auto-Healing]: Pausing script execution for {sleep_duration} seconds to reset quota window...")
-                time.sleep(sleep_duration)
-                print("🔄 [Auto-Healing]: Resuming execution stream, retrying AI mapping call now...")
+            error_message = str(quota_err)
+            
+            # 🛑 CASE A: Daily Quota Cap Hit (Pure din ki limit khatam)
+            if "PerDay" in error_message or "requests_per_day" in error_message.lower():
+                print("\n❌ [CRITICAL QUOTA CAP]: Google AI Studio Daily Free Limit completely exhausted!")
+                print("🛑 [Auto-Stopping]: Daily limits reset after 24 hours. Halting script immediately to save GitHub minutes.")
+                sys.exit(0)  # Pure script ko instantly clean exit kar dega!
+            
+            # ⏳ CASE B: Per-Minute Rate Limit Hit (Sirf 1 minute ka block)
+            elif "PerMinute" in error_message or "requests_per_minute" in error_message.lower():
+                print(f"\n⚠️ [RATE LIMIT]: Hit per-minute cap (Attempt {attempt}/{max_retries}).")
+                if attempt < max_retries:
+                    sleep_duration = 60
+                    print(f"⏳ [Smart Sleep]: Pausing for {sleep_duration} seconds to clear the minute window...")
+                    time.sleep(sleep_duration)
+                else:
+                    print("❌ [RATE CRITICAL]: Minute cap retries exhausted for this link.")
+                    return {}
+            
+            # 🌐 CASE C: Koi aur Resource Limit
             else:
-                print("❌ [QUOTA CRITICAL]: Daily/Absolute Free Quota completely dried up. Postponing loop for next cron run.")
+                print(f"❌ [QUOTA EXHAUSTED]: Generic exhaustion detected: {error_message}")
                 return {}
                 
         except Exception as general_err:
@@ -109,6 +123,7 @@ def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int 
             
     return {}
 
+
 # ==============================================================================
 # 4. STEP 3: SMART SYNC ENGINE (DELTA SCRAPING / HASH CHECK OVERRIDE)
 # ==============================================================================
@@ -116,11 +131,9 @@ def process_and_sync_corporate_data(company_name: str, domain: str, webpage_raw_
     print(f"\n🚀 [Core Orchestrator]: Checking synchronization profile for: {company_name}")
     print("------------------------------------------------------------------------------------")
     
-    # ⚡ 1. Calculate Unique Text MD5 Hash
     sanitized_text = webpage_raw_text.strip()
     current_text_hash = hashlib.md5(sanitized_text.encode('utf-8')).hexdigest()
     
-    # ⚡ 2. Database Hash Validation Check
     try:
         db_response = supabase.table("corporate_helplines").select("text_hash").eq("domain", domain).execute()
         if db_response.data:
@@ -132,12 +145,11 @@ def process_and_sync_corporate_data(company_name: str, domain: str, webpage_raw_
     except Exception as cache_error:
         print(f"⚠️ [Cache Warning]: Could not read baseline hash: {cache_error}")
 
-    # ⚡ 3. Fall-through Execution only when text changes
     clean_emails = extract_emails_with_regex(webpage_raw_text)
     structured_data = map_data_with_gemini(webpage_raw_text, clean_emails)
     
     if not structured_data:
-        print(f"⚠️ [Core Orchestrator Abort]: No data extracted (Possibly due to Limit Exhaustion). Sync skipped.")
+        print(f"⚠️ [Core Orchestrator Abort]: Sync skipped due to missing data map.")
         return
 
     current_timestamp = datetime.now().strftime("%d-%b-%Y")
@@ -174,19 +186,19 @@ def process_and_sync_corporate_data(company_name: str, domain: str, webpage_raw_
 if __name__ == "__main__":
     print("\n🏁 [Execution Root]: Booting automated corporate helpline system...")
     
-    # 📌 TARGET 1: Amazon Pay India (Official Details)
+    # 📌 TARGET 1: Amazon Pay India
     amazon_text = (
         "Level 1: Customer Support (Queries & Complaints) "
         "You can contact our 24x7 customer service team via https://www.amazon.in/contact-us which provides online resolution. "
         "Level 2: Grievance Officer (Complaints) "
-        "Grievance Officer – Mr. Amber Dwivedi. Email – amazonpay-grievance-officer@amazonpay.in. "
-        "Address – Amazon Pay (India) Private Limited, Sattva Horizon, Bengaluru – 560064. "
+        "Grievance Officer - Mr. Amber Dwivedi. Email - amazonpay-grievance-officer@amazonpay.in. "
+        "Address - Amazon Pay (India) Private Limited, Sattva Horizon, Bengaluru - 560064. "
         "Level 3: Nodal Officer (Complaints) "
-        "Principal Nodal Officer - Mahavir Jindal. Email – amazonpay-nodal-officer@amazonpay.in."
+        "Principal Nodal Officer - Mahavir Jindal. Email - amazonpay-nodal-officer@amazonpay.in."
     )
     process_and_sync_corporate_data("Amazon Pay India", "amazon.in", amazon_text, gov_verified=True)
     
-    # 📌 TARGET 2: Airtel India (Official Details)
+    # 📌 TARGET 2: Airtel India
     airtel_text = (
         "Welcome to Airtel India Compliance Section. For general support contact customer.care@airtel.in or call 1800112211. "
         "Our Nodal Officer for appellate authority is Mr. Rajesh Kumar. If you want to escalate your issue to level 2, "
