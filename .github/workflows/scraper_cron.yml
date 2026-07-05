@@ -3,9 +3,9 @@ name: Automatic Helpline Scraper Cron
 on:
   schedule:
     # ⏰ Har 12 ghante me ek baar chalega (Subah 9 baje aur Shaam 9 baje UTC)
-    - cron: '0 9,21 * * *'  
+    - cron: '0 9,21 * * *'
   workflow_dispatch:
-    
+
 jobs:
   scrape_and_sync:
     runs-on: ubuntu-latest
@@ -22,7 +22,8 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install google-generativeai supabase python-dotenv
+          # ✅ Yahan par bilkul naya package 'google-genai' set kar diya hai
+          pip install google-genai supabase python-dotenv
 
       - name: Execute Extractor Script with Hidden Secrets
         env:
