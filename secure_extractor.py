@@ -5,8 +5,8 @@ import time
 import sys  # 🛑 Script ko instantly kill karne ke liye
 import hashlib
 from datetime import datetime
-import google.generativeai as genai
-from google.api_core import exceptions
+from google import genai  # ✅ Google ki nayi official SDK import
+from google.genai import types  # ✅ Configuration settings ke liye
 from supabase import create_client, Client
 
 # ==============================================================================
@@ -30,7 +30,8 @@ if not all([GEMINI_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY]):
     exit(1)
 
 print("⚙️ [Initialization]: Connecting API Clients...")
-genai.configure(api_key=GEMINI_KEY)
+# ✅ Naye SDK ke mutabik Client instance initialize kiya
+client = genai.Client(api_key=GEMINI_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 print("🎯 [Initialization]: API Client instances initialized successfully!")
 
@@ -40,7 +41,7 @@ print("🎯 [Initialization]: API Client instances initialized successfully!")
 # ==============================================================================
 def extract_emails_with_regex(raw_text: str) -> list:
     print("\n🔍 [Pipeline Phase 1]: Triggering core Regex structural scanning pattern...")
-    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-]{2,}'
     all_emails = re.findall(email_pattern, raw_text)
     unique_emails = list(set(all_emails))
     print(f"✅ [Pipeline Phase 1]: Scan complete. Whitelist compiled: {unique_emails}")
@@ -48,12 +49,12 @@ def extract_emails_with_regex(raw_text: str) -> list:
 
 
 # ==============================================================================
-# 3. STEP 2: BRAIN ENGINE (SMART LIMIT ROUTER)
+# 3. STEP 2: BRAIN ENGINE (NEW SDK + SMART LIMIT ROUTER)
 # ==============================================================================
 def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int = 2) -> dict:
     """
-    Gemini AI se data map karta hai aur error message ke type (Day vs Minute) 
-    ke hisab se smart decision leta hai.
+    Naye google-genai SDK ke sath data map karta hai aur error message ke type 
+    (Day vs Minute) ke hisab se smart decision leta hai.
     """
     print("🧠 [Pipeline Phase 2]: Passing structured tokens to Gemini LLM mapping core...")
     if not verified_emails:
@@ -73,53 +74,51 @@ def map_data_with_gemini(raw_text: str, verified_emails: list, max_retries: int 
         "}"
     )
 
-    # ✅ Model initialization ke time par hi system_instruction pass kiya hai
-    model = genai.GenerativeModel(
-        'gemini-2.0-flash',
-        system_instruction=system_instruction
-    )
-    
     prompt = f"Raw Source Context Document Block:\n{raw_text}"
     
     # 🔄 Smart Retry & Routing Loop
     for attempt in range(1, max_retries + 1):
         try:
-            # ✅ generate_content ko ekdum clean rakha hai
-            response = model.generate_content(
-                prompt,
-                generation_config={"response_mime_type": "application/json"}
+            # ✅ Naye SDK ka official content generation method
+            response = client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json"
+                )
             )
             print("✅ [Pipeline Phase 2 Success]: AI successfully parsed data hierarchy!")
             return json.loads(response.text.strip())
             
-        except exceptions.ResourceExhausted as quota_err:
-            error_message = str(quota_err)
+        except Exception as err:
+            error_message = str(err)
             
-            # 🛑 CASE A: Daily Quota Cap Hit (Pure din ki limit khatam)
-            if "PerDay" in error_message or "requests_per_day" in error_message.lower():
-                print("\n❌ [CRITICAL QUOTA CAP]: Google AI Studio Daily Free Limit completely exhausted!")
-                print("🛑 [Auto-Stopping]: Daily limits reset after 24 hours. Halting script immediately to save GitHub minutes.")
-                sys.exit(0)  # Pure script ko instantly clean exit kar dega!
-            
-            # ⏳ CASE B: Per-Minute Rate Limit Hit (Sirf 1 minute ka block)
-            elif "PerMinute" in error_message or "requests_per_minute" in error_message.lower():
-                print(f"\n⚠️ [RATE LIMIT]: Hit per-minute cap (Attempt {attempt}/{max_retries}).")
-                if attempt < max_retries:
-                    sleep_duration = 60
-                    print(f"⏳ [Smart Sleep]: Pausing for {sleep_duration} seconds to clear the minute window...")
-                    time.sleep(sleep_duration)
-                else:
-                    print("❌ [RATE CRITICAL]: Minute cap retries exhausted for this link.")
-                    return {}
-            
-            # 🌐 CASE C: Koi aur Resource Limit
-            else:
-                print(f"❌ [QUOTA EXHAUSTED]: Generic exhaustion detected: {error_message}")
-                return {}
+            # Check if it's a Quota/Rate Limit issue (429 or ResourceExhausted)
+            if "429" in error_message or "exhausted" in error_message.lower():
                 
-        except Exception as general_err:
-            print(f"❌ [Pipeline Phase 2 Fault]: General exception encountered: {general_err}")
-            return {}
+                # 🛑 CASE A: Daily Quota Cap Hit (Pure din ki limit khatam)
+                if "perday" in error_message.lower() or "requests_per_day" in error_message.lower():
+                    print("\n❌ [CRITICAL QUOTA CAP]: Google AI Studio Daily Free Limit completely exhausted!")
+                    print("🛑 [Auto-Stopping]: Daily limits reset after 24 hours. Halting script immediately to save GitHub minutes.")
+                    sys.exit(0)  # Pure script ko instantly clean exit kar dega
+                
+                # ⏳ CASE B: Per-Minute Rate Limit Hit (Sirf 1 minute ka block)
+                elif "perminute" in error_message.lower() or "requests_per_minute" in error_message.lower() or "resource_exhausted" in error_message.lower():
+                    print(f"\n⚠️ [RATE LIMIT]: Hit per-minute cap (Attempt {attempt}/{max_retries}).")
+                    if attempt < max_retries:
+                        sleep_duration = 60
+                        print(f"⏳ [Smart Sleep]: Pausing for {sleep_duration} seconds to clear the minute window...")
+                        time.sleep(sleep_duration)
+                    else:
+                        print("❌ [RATE CRITICAL]: Minute cap retries exhausted for this link.")
+                        return {}
+                else:
+                    print(f"❌ [QUOTA EXHAUSTED]: Generic exhaustion detected: {error_message}")
+                    return {}
+            else:
+                print(f"❌ [Pipeline Phase 2 Fault]: General exception encountered: {error_message}")
+                return {}
             
     return {}
 
