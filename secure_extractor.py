@@ -22,8 +22,11 @@ GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 
-print(f"DEBUG: Environment Config -> IS_GITHUB: {IS_GITHUB}")
-if not GEMINI_KEY: print("DEBUG: CRITICAL ERROR - GEMINI_API_KEY is missing!")
+# Debugging the Key
+if GEMINI_KEY:
+    print(f"DEBUG: Key being used starts with: {str(GEMINI_KEY)[:4]}...") 
+else:
+    print("DEBUG: CRITICAL ERROR - GEMINI_API_KEY is NOT detected in environment!")
 
 # Initialization
 client = genai.Client(api_key=GEMINI_KEY)
