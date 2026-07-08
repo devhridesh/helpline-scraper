@@ -2,9 +2,8 @@ name: Automatic Helpline Scraper Cron
 
 on:
   schedule:
-    # ⏰ Har 12 ghante me ek baar chalega (Subah 9 baje aur Shaam 9 baje UTC)
-    - cron: '0 9,21 * * *'
-  workflow_dispatch:        # Manual 'Run workflow' ka button bhi chalega
+    - cron: '30 07 * * *' # Yeh 1:00 PM IST (India time) par chalega
+  workflow_dispatch:      # Manual 'Run workflow' ka button bhi chalega
 
 jobs:
   scrape_and_sync:
@@ -22,7 +21,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          # 🚀 Nayi official SDK aur required libraries yahan install ho rahi hain
+          # 🚀 Google ki nayi GenAI SDK aur required libraries
           pip install google-genai supabase python-dotenv
 
       - name: Execute Extractor Script with Hidden Secrets
@@ -30,5 +29,5 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        # 🎯 Aapka zero-retry wala smart code yahan se trigger hoga
+        # 🎯 Debugger enabled Python script trigger
         run: python3 secure_extractor.py
